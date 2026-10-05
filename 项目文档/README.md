@@ -8,16 +8,15 @@ The weak pool is **not** PgCat behavior or evidence of a PgCat vulnerability. Th
 
 ## Reproduce locally
 
-Run from the workspace root. Build PostgreSQL 17.6 and the pinned PgCat commit inside `Build/环境/PgPoolPrincipalIsolation-20261006`; keep all runtime files under `Build/验证/PgPoolPrincipalIsolation-20261006`. The source tree contains `tests/live_lab.py`, which creates and tears down its own loopback PostgreSQL service and PgCat process. It never targets another database.
+Run from this repository's root. Follow the exact pinned download and build steps in [the live CI job](../.github/workflows/ci.yml) to install PostgreSQL 17.6 and the fixed PgCat commit under `Build/环境`. Keep runtime files under `Build/验证`. The source tree contains `tests/live_lab.py`, which creates and tears down its own loopback PostgreSQL service and PgCat process. It never targets another database.
 
 ```sh
 PYTHONDONTWRITEBYTECODE=1 \
-PYTHONPATH=项目源码/当前项目/research-cvp30-c-20261005/PgPoolPrincipalIsolation/src \
-Build/环境/PgPoolPrincipalIsolation-20261006/venv/bin/python \
-项目源码/当前项目/research-cvp30-c-20261005/PgPoolPrincipalIsolation/tests/live_lab.py \
-  --pg-prefix Build/环境/PgPoolPrincipalIsolation-20261006/pg17 \
-  --pgcat-bin Build/环境/PgPoolPrincipalIsolation-20261006/pgcat-target/release/pgcat \
-  --work-dir Build/验证/PgPoolPrincipalIsolation-20261006
+PYTHONPATH=src \
+Build/环境/live-py/bin/python tests/live_lab.py \
+  --pg-prefix Build/环境/pg17 \
+  --pgcat-bin Build/环境/pgcat-target/release/pgcat \
+  --work-dir Build/验证/live
 ```
 
 `receipt.json` in the reported Build run directory records the exact runtime versions, PgCat executable digest, server identities and case outcomes. Its `PASS` status requires a live PostgreSQL and PgCat process. The server logs remain in Build; the generated credentials and database cluster are removed at teardown. Source-only unit tests use `pytest -q -p no:cacheprovider tests/test_gate_unit.py` with `PYTHONDONTWRITEBYTECODE=1` and `PYTHONPATH=src`.
