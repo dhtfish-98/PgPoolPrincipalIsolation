@@ -1,0 +1,9 @@
+# Boundary and design
+
+The input is an already authenticated application principal, never a self-declared database username. A binding maps `(principal, database)` to the precise PgCat endpoint, PostgreSQL role and credential. The pool key is this pair. An unbound pair is denied before a network connection is opened.
+
+Each checkout opens a PostgreSQL transaction, marks it read-only, and asks the same pinned backend for `current_user`, `session_user`, and `current_database()`. All three must match the binding. Only then does the caller receive `ReadLease`, whose sole data operation is a safely quoted `SELECT` from the lab fixture. When the lease ends, the transaction ends before its frontend becomes idle. An identity mismatch, query error, policy epoch change or pool close destroys the frontend. Reload replaces the binding map atomically and drains idle frontends.
+
+The central risk is a downstream application accidentally reusing an A connection for B. The test-only weak baseline demonstrates that A's rights still apply when such a handle is mislabeled B. The gate's poisoned-idle-slot case moves a real A frontend into B's idle slot, then observes `PrincipalMismatch` before B can read. PostgreSQL privilege denial gives a second, independent control when B actually connects with B's role.
+
+This does not offer browser authentication, network isolation, general SQL proxying or support for arbitrary SQL. It relies on the caller keeping the verified principal and credentials trusted. An existing active transaction is allowed to finish during reload, so this prototype does not provide instant revocation. The real fixture uses no RLS; its denial comes from role/schema permissions and the connection identity boundary. That distinguishes it from `PostgresRowPolicyReview`, whose proposed experiment is row-level security.

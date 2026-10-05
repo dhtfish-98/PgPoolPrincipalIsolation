@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pgpool-principal-isolation"
+version = "0.1.0"
+description = "Read-only principal and database binding for an application pool using PgCat"
+requires-python = ">=3.11"
+authors = [{name = "dhtfish98"}]
+readme = "项目文档/README.md"
+license = "MIT"
+license-files = ["项目文档/LICENSE"]
+dependencies = ["psycopg[binary]>=3.2,<4"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools]
+include-package-data = true

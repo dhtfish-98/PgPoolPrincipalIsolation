@@ -1,0 +1,67 @@
+name: Verify
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Unit and archive checks
+        run: |
+          mkdir -p Build/环境 Build/验证
+          python -m venv Build/环境/py
+          Build/环境/py/bin/python -m pip install --upgrade pip build pytest 'psycopg[binary]>=3.2,<4'
+          PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src Build/环境/py/bin/python -m pytest -q -p no:cacheprovider tests/test_gate_unit.py
+          PYTHONDONTWRITEBYTECODE=1 Build/环境/py/bin/python -m build --sdist --wheel --outdir Build/验证/dist
+          Build/环境/py/bin/python scripts/verify_dist.py Build/验证/dist/*
+          Build/环境/py/bin/python -m venv Build/环境/wheel
+          Build/环境/wheel/bin/python -m pip install Build/验证/dist/*.whl
+          env -u PYTHONPATH Build/环境/wheel/bin/python -c 'import pgpool_principal_isolation as p; assert p.__version__ == "0.1.0"'
+
+  live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      CARGO_HOME: ${{ github.workspace }}/Build/环境/cargo-home
+      CARGO_TARGET_DIR: ${{ github.workspace }}/Build/环境/pgcat-target
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Build fixed PostgreSQL and PgCat in Build
+        run: |
+          mkdir -p Build/环境 Build/验证
+          curl -fsSL https://ftp.postgresql.org/pub/source/v17.6/postgresql-17.6.tar.bz2 -o Build/环境/postgresql-17.6.tar.bz2
+          curl -fsSL https://ftp.postgresql.org/pub/source/v17.6/postgresql-17.6.tar.bz2.sha256 -o Build/环境/postgresql.sha256
+          (cd Build/环境 && sha256sum -c postgresql.sha256)
+          tar -xjf Build/环境/postgresql-17.6.tar.bz2 -C Build/环境
+          (cd Build/环境/postgresql-17.6 && ./configure --prefix="$GITHUB_WORKSPACE/Build/环境/pg17" --without-readline --without-zlib --without-icu && make -j2 && make install)
+          git clone --filter=blob:none --no-checkout https://github.com/postgresml/pgcat.git Build/环境/pgcat
+          git -C Build/环境/pgcat checkout 5b038813eb14f181434ab7b5509e74d9b1fe123b
+          test "$(git -C Build/环境/pgcat rev-parse HEAD)" = 5b038813eb14f181434ab7b5509e74d9b1fe123b
+          curl -fsSL https://static.rust-lang.org/dist/rust-1.85.1-x86_64-unknown-linux-gnu.tar.xz -o Build/环境/rust-1.85.1.tar.xz
+          curl -fsSL https://static.rust-lang.org/dist/rust-1.85.1-x86_64-unknown-linux-gnu.tar.xz.sha256 -o Build/环境/rust-1.85.1.tar.xz.sha256
+          (cd Build/环境 && sed 's/rust-1.85.1-x86_64-unknown-linux-gnu.tar.xz/rust-1.85.1.tar.xz/' rust-1.85.1.tar.xz.sha256 | sha256sum -c)
+          tar -xJf Build/环境/rust-1.85.1.tar.xz -C Build/环境
+          (cd Build/环境/rust-1.85.1-x86_64-unknown-linux-gnu && ./install.sh --prefix="$GITHUB_WORKSPACE/Build/环境/rust" --disable-ldconfig)
+          PATH="$GITHUB_WORKSPACE/Build/环境/rust/bin:$PATH" cargo build --locked --release --manifest-path Build/环境/pgcat/Cargo.toml
+      - name: Real-service identity comparison
+        run: |
+          python -m venv Build/环境/live-py
+          Build/环境/live-py/bin/python -m pip install --upgrade pip 'psycopg[binary]>=3.2,<4'
+          PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src Build/环境/live-py/bin/python tests/live_lab.py --pg-prefix Build/环境/pg17 --pgcat-bin Build/环境/pgcat-target/release/pgcat --work-dir Build/验证/live
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pgpool-live-receipts
+          path: Build/验证/live/live-*/receipt.json
+          if-no-files-found: ignore

@@ -1,0 +1,3 @@
+recursive-include 项目文档 *.md LICENSE
+prune tests
+global-exclude __pycache__ *.py[cod] .DS_Store
