@@ -16,11 +16,12 @@ jobs:
           python-version: "3.11"
       - name: Unit and archive checks
         run: |
-          mkdir -p Build/环境 Build/验证
+          mkdir -p Build/环境 Build/验证 Build/环境/build-source
           python -m venv Build/环境/py
           Build/环境/py/bin/python -m pip install --upgrade pip build pytest 'psycopg[binary]>=3.2,<4'
           PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src Build/环境/py/bin/python -m pytest -q -p no:cacheprovider tests/test_gate_unit.py
-          PYTHONDONTWRITEBYTECODE=1 Build/环境/py/bin/python -m build --sdist --wheel --outdir Build/验证/dist
+          git archive --format=tar HEAD | tar -xf - -C Build/环境/build-source
+          (cd Build/环境/build-source && PYTHONDONTWRITEBYTECODE=1 "$GITHUB_WORKSPACE/Build/环境/py/bin/python" -m build --sdist --wheel --outdir "$GITHUB_WORKSPACE/Build/验证/dist")
           Build/环境/py/bin/python scripts/verify_dist.py Build/验证/dist/*
           Build/环境/py/bin/python -m venv Build/环境/wheel
           Build/环境/wheel/bin/python -m pip install Build/验证/dist/*.whl
